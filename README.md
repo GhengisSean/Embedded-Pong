@@ -1,2 +1,2 @@
-# Embedded-Pong
-Real-time Embedded Systems Final Project
+# Mini-Project-4
+RTOS with Blocking Semaphores and Priority Scheduling 
