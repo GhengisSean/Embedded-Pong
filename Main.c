@@ -104,7 +104,7 @@ int ySpeed(int angle){
 	}
 
 	ball_angle = angle;
-	x_speed = sin((angle * PI) / 180) * ball_speed;
+	y_speed = sin((angle * PI) / 180) * ball_speed;
 	
 	return y_speed;
 }
@@ -120,6 +120,7 @@ void UpdateBall(void){
 void CollisionHandler(void){
 	
 	//detect collisions with left paddle
+	if (l_paddle_y
 	
 
 	//detect collision with top of screen
@@ -133,31 +134,24 @@ void Device_Init(void){
 	BSP_LCD_OutputInit();
 	BSP_Joystick_Init();
 }
-//------------------Task 1--------------------------------
+
+
 // background thread executed at 20 Hz
 //******** Producer *************** 
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
-	if (rawx > origin[0]){
-		x = x + ((rawx - origin[0]) >> 9);
-	}
-	else{
-		x = x - ((origin[0] - rawx) >> 9);
-	}
+
 	if (rawy < origin[1]){
 		y = y + ((origin[1] - rawy) >> 9);
 	}
 	else{
 		y = y - ((rawy - origin[1]) >> 9);
 	}
-	if (x > 127){
-		x = 127;}
-	if (x < 0){
-		x = 0;}
+
 	if (y > 127 - CROSSSIZE){
 		y = 127 - CROSSSIZE;}
 	if (y < 0){
 		y = 0;}
-	data->x = x; data->y = y;
+	data->y = y;
 	return 1;
 }
 
@@ -244,8 +238,12 @@ void Consumer(void){
 		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
 		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
-		BSP_LCD_Message(1, 5, 3, "X: ", x);		
-		BSP_LCD_Message(1, 5, 12, "Y: ", y);
+		l_paddle_y = data.y;
+		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
+		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
+		
+		//BSP_LCD_Message(1, 5, 3, "X: ", x);		
+		//BSP_LCD_Message(1, 5, 12, "Y: ", y);
 		OS_bSignal(&LCDFree);
 		prevx = data.x; 
 		prevy = data.y;
@@ -330,8 +328,8 @@ void World_Init(void){
 	BSP_LCD_FillScreen(BGCOLOR);
 	BSP_Joystick_Input(&origin[0],&origin[1],&select);
 	
-	BSP_LCD_DrawFastVLine(PADDLEX, 51, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
-	BSP_LCD_DrawFastVLine(PADDLEY, 51, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
+	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
+	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
 	
 
 }
