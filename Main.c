@@ -233,10 +233,10 @@ void Device_Init(void){
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 
 	if (rawy < origin[1]){
-		y = y + ((origin[1] - rawy) >> 5);
+		y = y + ((origin[1] - rawy) >> 4);
 	}
 	else{
-		y = y - ((rawy - origin[1]) >> 5);
+		y = y - ((rawy - origin[1]) >> 4);
 	}
 
 	if (y > 127 - PADDLEHEIGHT/2){
@@ -258,6 +258,9 @@ void Producer(void){
 		int data1 = UART_Recv();
 		if (data1 == 0xFE) {
 			break;
+		}
+		else if (data1 == 0xFA) {
+			World_Init();
 		}
 		else {
 			data.x = data1;
@@ -330,52 +333,40 @@ void Consumer(void){
 	}
 }
 
-
-// ***********ButtonWork2*************
-void Restart(void){
-	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
-	NumSamples = RUNLENGTH; // first kill the foreground threads
-	OS_Sleep(50); // wait
-	StartTime = OS_MsTime();
-	ElapsedTime = 0;
-	ButtonStartTime = OS_Time();
-	OS_bWait(&LCDFree);
-	BSP_LCD_FillScreen(BGCOLOR);
-	Button2RespTime = (Button2RespTime + (OS_Time() - ButtonStartTime)) >> 1;
-	while (ElapsedTime < 500){
-		CurrentTime = OS_MsTime();
-		ElapsedTime = CurrentTime - StartTime;
-		BSP_LCD_DrawString(5,6,"Restarting",LCD_WHITE);
-	}
-	BSP_LCD_FillScreen(BGCOLOR);
-	OS_bSignal(&LCDFree);
-	World_Init();
-	// restart
-
-  NumSamples = 0;
-  UpdateWork = 0;
-
-	PseudoCount = 0;
-	x = 63; y = 63;
-	NumCreated += OS_AddThread(&Consumer,128,1); 
-  OS_Kill();  // done, OS does not return from a Kill
-} 
-
 //************SW2Push*************
 void SW2Push(void){
   if(OS_MsTime() > 20 ){ // debounce
-    
+		UART_Send(0xFA);
+		World_Init();
     OS_ClearMsTime();  // at least 20ms between touches
   }
-	
 }
 
 
 
 void World_Init(void){
+	x = 63;
+	y = 63;
+	
+	// Ball stuff ;)
+	ball_x = 63;
+	ball_y = 63;
+	ball_speed = 7;
+	ball_angle = 0;
+	x_speed = 0;
+	y_speed = 0;
+
+	// Paddle Stuff ;)
+	l_paddle_y = 63;
+	r_paddle_y = 63;
+	
 	BSP_LCD_FillScreen(LCD_BLACK);
 	origin[0] = 0x7FF;
 	origin[1] = 0x7FF;
+	
+	BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //draw left paddle
+	BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //draw right paddle
+	BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
 	
 	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw left paddle
 	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw right paddle
@@ -383,8 +374,11 @@ void World_Init(void){
 	
 	ball_angle = PI;
 	x_speed = 5 * cos(ball_angle);
+	y_speed = 0;
 	
 	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+	ball_xold = ball_x;
+	ball_yold = ball_y;
 }
 
 //******************* Main Function**********
