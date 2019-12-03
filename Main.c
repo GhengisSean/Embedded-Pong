@@ -30,8 +30,8 @@
 #define PI 3.14159265
 
 #define PADDLEHEIGHT					25
-#define L_PADDLEX								20
-#define R_PADDLEX								107
+#define L_PADDLEX							20
+#define R_PADDLEX							107
 
 #define	BALLRAD								3
 
@@ -59,12 +59,12 @@ void World_Init(void);
 
 
 // Ball stuff ;)
-int16_t ball_x = 63;
-int16_t ball_y = 63;
+float ball_x = 63;
+float ball_y = 63;
 //int ball_speed = 7;
 float ball_angle = 0;
-int x_speed = -4;
-int y_speed = 0;
+float x_speed = 0;
+float y_speed = 0;
 
 // Paddle Stuff ;)
 int l_paddle_y = 63;
@@ -77,34 +77,99 @@ void UpdateBall(void){
 	int diff;
 	
 //detect collisions with left paddle
-	if (ball_x - 2 <= L_PADDLEX &&									//bounce if  ball is touching paddle's x coord (works)
-			ball_y - 2 >= l_paddle_y - PADDLEHEIGHT/2 &&	// bounce if ball is below or at top of paddle
-			ball_y + 2 <= l_paddle_y + PADDLEHEIGHT/2) { // bounce if ball is above or at bottom of paddle
+	if (ball_x - 3 <= L_PADDLEX &&									//bounce if  ball is touching paddle's x coord (works)
+			ball_y - 3 >= l_paddle_y - PADDLEHEIGHT/2 &&	// bounce if ball is below or at top of paddle
+			ball_y + 3 <= l_paddle_y + PADDLEHEIGHT/2) { // bounce if ball is above or at bottom of paddle
 
-				
+			diff = ball_y - l_paddle_y;
 			
+			switch (diff) {
 				
-			x_speed *= -1;
+				case 12: case	11: case	10: case	9:
+					ball_angle = (-45 * PI) / 180;
+					break;
 				
-			
-					
+				case 8: case 7: case 6: case 5:
+					ball_angle = (-30 * PI) / 180;
+					break;
+				
+				case 4: case 3: case 2: case 1:
+					ball_angle = (-15 * PI) / 180;
+					break;
+				
+				case 0:
+					ball_angle = 0;
+					break;
+				
+				case -1: case -2: case -3: case -4:
+					ball_angle = (15 * PI) / 180;
+					break;
+				
+				case -5: case -6: case -7: case -8:
+					ball_angle = (30 * PI) / 180;
+					break;
+				
+				case -9: case -10: case -11: case -12:
+					ball_angle = (45 * PI) / 180;
+					break;
 			}
+			
+		if (y_speed == 0) y_speed = x_speed;
+		x_speed = 5 * cos(ball_angle);
+		y_speed = 5 * sin(ball_angle);
+					
+		}
 			
 	//detect collisions with right paddle
-	if (ball_x - 2 >= R_PADDLEX &&
-			ball_y - 2 >= r_paddle_y - PADDLEHEIGHT/2 &&
-			ball_y + 2 <= r_paddle_y + PADDLEHEIGHT/2) {
-			
-			x_speed *= -1;
-					
+	if (ball_x + 3 >= R_PADDLEX &&
+			ball_y - 3 >= r_paddle_y - PADDLEHEIGHT/2 &&
+			ball_y + 3 <= r_paddle_y + PADDLEHEIGHT/2) { 
+				
+			diff = ball_y - r_paddle_y;
+			switch (diff) {
+				
+				case 12: case	11: case	10: case	9:
+					ball_angle = (-135 * PI) / 180;
+					break;
+				
+				case 8: case 7: case 6: case 5:
+					ball_angle = (-150 * PI) / 180;
+					break;
+				
+				case 4: case 3: case 2: case 1:
+					ball_angle = (-165 * PI) / 180;
+					break;
+				
+				case 0:
+					ball_angle = 180;
+					break;
+				
+				case -1: case -2: case -3: case -4:
+					ball_angle = (165 * PI) / 180;
+					break;
+				
+				case -5: case -6: case -7: case -8:
+					ball_angle = (150 * PI) / 180;
+					break;
+				
+				case -9: case -10: case -11: case -12:
+					ball_angle = (135 * PI) / 180;
+					break;
 			}
+		
+		if (y_speed == 0) y_speed = x_speed;
+		x_speed = -5 * cos(ball_angle);
+		y_speed = 5 * sin(ball_angle);
+			
+				x_speed *= -1;
+		}
 	
 
 		//detect collision with top or bottom of screen
 		if (ball_y <= 2 || ball_y >= 125) {
-			y_speed *= -1;
+			y_speed *= -1.5;
 		}
-	
+		
 		BSP_LCD_DrawBall(ball_x, ball_y, LCD_BLACK);
 		ball_x += x_speed;
 		ball_y -= y_speed;
@@ -324,7 +389,8 @@ void World_Init(void){
   div = RAND_MAX / range;
   ball_angle = -1 + (rand() / div);
 	*/
-	ball_angle = PI/6;
+	ball_angle = PI;
+	x_speed = 5 * cos(ball_angle);
 	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
 }
 
