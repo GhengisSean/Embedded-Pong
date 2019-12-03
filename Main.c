@@ -120,7 +120,7 @@ void UpdateBall(void){
 void CollisionHandler(void){
 	
 	//detect collisions with left paddle
-	if (l_paddle_y
+	//if (l_paddle_y
 	
 
 	//detect collision with top of screen
@@ -141,10 +141,10 @@ void Device_Init(void){
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 
 	if (rawy < origin[1]){
-		y = y + ((origin[1] - rawy) >> 9);
+		y = y + ((origin[1] - rawy) >> 5);
 	}
 	else{
-		y = y - ((rawy - origin[1]) >> 9);
+		y = y - ((rawy - origin[1]) >> 5);
 	}
 
 	if (y > 127 - CROSSSIZE){
@@ -235,8 +235,8 @@ void Consumer(void){
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
 		ConsumerCount++;	
-		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
-		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
+//		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
+//		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		l_paddle_y = data.y;
 		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
@@ -247,7 +247,7 @@ void Consumer(void){
 		OS_bSignal(&LCDFree);
 		prevx = data.x; 
 		prevy = data.y;
-		
+		UART_OutUDec(10);
 	}
   OS_Kill();  // done
 }
