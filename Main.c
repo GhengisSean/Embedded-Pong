@@ -103,7 +103,7 @@ void Producer(void){
 	BSP_Joystick_Input(&rawX,&rawY,&select);
 	UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
 	data.x = l_paddle_y;
-	while (1) { // Recv from Slave
+	while (1) { // Recv from Master
 		int data1 = UART_Recv();
 		if (data1 == 0xFE) {
 			break;
@@ -123,7 +123,7 @@ void Producer(void){
 		}
 	}
 	JsFifo_Put(data); // send to consumer 
-	UART_Send(data.y); // Send To Slave
+	UART_Send(data.y); // Send To Master
 	
 }
 
