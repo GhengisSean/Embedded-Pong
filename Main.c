@@ -71,68 +71,6 @@ int l_paddle_y = 63;
 int r_paddle_y = 63;
 
 
-
-//updates horizontal speed
-int xSpeed(int angle){
-	if (angle < 0){
-		angle += 360;
-	}
-	
-	// next two checks prevent overly-harsh angles, feeling cute, may delete later
-	if (angle < 15 && angle > 0){
-		angle = 15;
-	}
-	
-	else if (angle < 180 && angle > 165){
-		angle = 165;
-	}
-
-	ball_angle = angle;
-	x_speed = cos((angle * PI) / 180) * ball_speed;
-	
-	return x_speed;
-}
-
-//updates horizontal speed
-int ySpeed(int angle){
-	if (angle < 0){
-		angle += 360;
-	}
-	
-	if (angle < 15 && angle > 0){
-		angle = 15;
-	}
-	
-	else if (angle < 180 && angle > 165){
-		angle = 165;
-	}
-
-	ball_angle = angle;
-	y_speed = sin((angle * PI) / 180) * ball_speed;
-	
-	return y_speed;
-}
-
-// thread to update ball's location
-void UpdateBall(void){
-	ball_x += x_speed;
-	ball_y -= y_speed;
-	// TODO: Call LCD function to redraw the ball
-}
-
-// thread to detect and react to collisions
-void CollisionHandler(void){
-	
-	//detect collisions with left paddle
-	//if (l_paddle_y
-	
-
-	//detect collision with top of screen
-	if (ball_y <= 2 || ball_y >= 125) {
-		y_speed *= -1;
-	}
-}
-
 void Device_Init(void){
 	UART_Init();
 	BSP_LCD_OutputInit();
@@ -189,12 +127,7 @@ void Producer(void){
 	
 }
 
-//--------------end of Task 1-----------------------------
 
-//------------------Task 2--------------------------------
-// background thread executes with SW1 button
-// one foreground task created with button push
-// foreground treads run for 2 sec and die
 // ***********ButtonWork*************
 void ButtonWork(void){
 	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
@@ -258,11 +191,7 @@ void Consumer(void){
 	}
 }
 
-//--------------end of Task 6-----------------------------
 
-//------------------Task 7--------------------------------
-// background thread executes with button2
-// one foreground task created with button push
 // ***********ButtonWork2*************
 void Restart(void){
 	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
@@ -295,9 +224,6 @@ void Restart(void){
 } 
 
 //************SW2Push*************
-// Called when Button2 pushed
-// Adds another foreground task
-// background threads execute once and return
 void SW2Push(void){
   if(OS_MsTime() > 20 ){ // debounce
     if(OS_AddThread(&Restart,128,4)){
@@ -309,13 +235,8 @@ void SW2Push(void){
 	
 }
 
-//--------------end of Task 7-----------------------------
-
-// Fill the screen with the background color
-// Grab initial joystick position to bu used as a reference
 void World_Init(void){
 	BSP_LCD_FillScreen(BGCOLOR);
-	//BSP_Joystick_Input(&origin[0],&origin[1],&select);
 	origin[0] = 0x7FF;
 	origin[1] = 0x7FF;
 	
@@ -328,7 +249,7 @@ void World_Init(void){
 
 //******************* Main Function**********
 int main(void){ 
-  OS_Init();           // initialize, disable interrupts
+  OS_Init();
 	Device_Init();
   World_Init();
 
@@ -339,13 +260,12 @@ int main(void){
 //*******attach background tasks***********
   //OS_AddSW1Task(&SW1Push, 4);
 	OS_AddSW2Task(&SW2Push, 4);
-  OS_AddPeriodicThread(&Producer, PERIOD, 3); // 2 kHz real time sampling of PD3
-	//OS_AddPeriodicThread(&PeriodicUpdater, PSEUDOPERIOD, 3);
+  OS_AddPeriodicThread(&Producer, PERIOD, 3);
 	
  
   OS_AddThread(&Consumer, 128, 1); 
 
  
-  OS_Launch(TIME_1MS); // doesn't return, interrupts enabled in here
-	return 0;            // this never executes
+  OS_Launch(TIME_1MS);
+	return 0;
 }
