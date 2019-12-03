@@ -17,13 +17,18 @@ void WaitForInterrupt(void);  // low power mode
 // the accelerometer sample sequencer 2, and the microphone
 // uses sample sequencer 3.
 
+
+	volatile uint16_t *z;
+	volatile uint16_t stat;
+
+
 void static adcinit(void){
   SYSCTL_RCGCADC_R |= 0x00000001;  // 1) activate ADC0
   while((SYSCTL_PRADC_R&0x01) == 0){};// 2) allow time for clock to stabilize
                                    // 3-7) GPIO initialization in more specific functions
   ADC0_PC_R &= ~0xF;               // 8) clear max sample rate field
   ADC0_PC_R |= 0x1;                //    configure for 125K samples/sec
-  ADC0_SSPRI_R = 0x3210;           // 9) Sequencer 3 is lowest priority
+  ADC0_SSPRI_R = 0x3210;           // 9) Sequencer 3 is lowest priority ********this was originall 3210
                                    // 10-15) sample sequencer initialization in more specific functions
 }
 
@@ -35,30 +40,44 @@ void static adcinit(void){
 // Input: none
 // Output: none
 void BSP_Joystick_Init(void){
-  SYSCTL_RCGCGPIO_R |= 0x0000001A; // 1) activate clock for Ports E, D, and B
+  SYSCTL_RCGCGPIO_R |= 0x0000001A; // 1) activate clock for Ports E, D, and B 
   while((SYSCTL_PRGPIO_R&0x1A) != 0x1A){};// allow time for clocks to stabilize
                                    // 2) no need to unlock PE4, PD3, or PB5
   GPIO_PORTE_AMSEL_R &= ~0x10;     // 3a) disable analog on PE4
   GPIO_PORTD_AMSEL_R |= 0x08;      // 3b) enable analog on PD3
-  GPIO_PORTB_AMSEL_R |= 0x20;      // 3c) enable analog on PB5
+	GPIO_PORTD_AMSEL_R |= 0x07;      // ** enabled analog for pd0, pd1, pd2	
+  GPIO_PORTB_AMSEL_R |= 0x20;      // 3c) enable analog on PB5	
                                    // 4) configure PE4 as GPIO
   GPIO_PORTE_PCTL_R = (GPIO_PORTE_PCTL_R&0xFFF0FFFF)+0x00000000;
   GPIO_PORTE_DIR_R &= ~0x10;       // 5a) make PE4 input
   GPIO_PORTD_DIR_R &= ~0x08;       // 5b) make PD3 input
+	GPIO_PORTD_DIR_R &= ~0x07;			 // ** make pd0, pd1, pd2 inputs
   GPIO_PORTB_DIR_R &= ~0x20;       // 5c) make PB5 input
   GPIO_PORTE_AFSEL_R &= ~0x10;     // 6a) disable alt funct on PE4
   GPIO_PORTD_AFSEL_R |= 0x08;      // 6b) enable alt funct on PD3
+	GPIO_PORTD_AFSEL_R |= 0x07;	     // ** same here
   GPIO_PORTB_AFSEL_R |= 0x20;      // 6c) enable alt funct on PB5
   GPIO_PORTE_DEN_R |= 0x10;        // 7a) enable digital I/O on PE4
   GPIO_PORTD_DEN_R &= ~0x08;       // 7b) enable analog functionality on PD3
+	GPIO_PORTD_DEN_R &= ~0x07;       // ** same here	
   GPIO_PORTB_DEN_R &= ~0x20;       // 7c) enable analog functionality on PB5
   adcinit();                       // 8-9) general ADC initialization
-  ADC0_ACTSS_R &= ~0x0002;         // 10) disable sample sequencer 1
-  ADC0_EMUX_R &= ~0x00F0;          // 11) seq1 is software trigger
-  ADC0_SSMUX1_R = 0x004B;          // 12) set channels for SS1
-  ADC0_SSCTL1_R = 0x0060;          // 13) no TS0 D0 IE0 END0 TS1 D1, yes IE1 END1
-  ADC0_IM_R &= ~0x0002;            // 14) disable SS1 interrupts
-  ADC0_ACTSS_R |= 0x0002;          // 15) enable sample sequencer 1
+		
+//  ADC0_ACTSS_R &= ~0x0002;         // 10) disable sample sequencer 1
+//  ADC0_EMUX_R &= ~0x00F0;          // 11) seq1 is software trigger
+//  ADC0_SSMUX1_R = 0x004B;          // 12) set channels for SS1
+//  ADC0_SSCTL1_R = 0x0060;          // 13) no TS0 D0 IE0 END0 TS1 D1, yes IE1 END1
+//  ADC0_IM_R &= ~0x0002;            // 14) disable SS1 interrupts
+//  ADC0_ACTSS_R |= 0x0002;          // 15) enable sample sequencer 1
+
+//not sure whats going on here
+	
+	ADC0_ACTSS_R &= ~0x0004;         // 10) disable sample sequencer 2
+  ADC0_EMUX_R &= ~0x0F00;          // 11) seq2 is software trigger
+  ADC0_SSMUX2_R = 0x0567;          // 12) set channels for SS2
+  ADC0_SSCTL2_R = 0x0600;          // 13) no TS0 D0 IE0 END0 TS1 D1, yes IE1 END1 *****changed this
+  ADC0_IM_R &= ~0x0004;            // 14) disable SS2 interrupts
+  ADC0_ACTSS_R |= 0x0004;          // 15) enable sample sequencer 2
 }
 
 // ------------BSP_Joystick_Input------------
@@ -73,11 +92,26 @@ void BSP_Joystick_Init(void){
 // Output: none
 // Assumes: BSP_Joystick_Init() has been called
 #define SELECT    (*((volatile uint32_t *)0x40024040))  /* PE4 */
+//void BSP_Joystick_Input(uint16_t *x, uint16_t *y, uint8_t *select){
+//  ADC0_PSSI_R = 0x0002;            // 1) initiate SS1
+//  while((ADC0_RIS_R&0x02)==0){};   // 2) wait for conversion done
+//  *x = ADC0_SSFIFO1_R;          // 3a) read first result
+//  *y = ADC0_SSFIFO1_R;          // 3b) read second result
+//  *select = SELECT;                // return 0(pressed) or 0x10(not pressed)
+//  ADC0_ISC_R = 0x0002;             // 4) acknowledge completion
+//}
+
 void BSP_Joystick_Input(uint16_t *x, uint16_t *y, uint8_t *select){
-  ADC0_PSSI_R = 0x0002;            // 1) initiate SS1
-  while((ADC0_RIS_R&0x02)==0){};   // 2) wait for conversion done
-  *x = ADC0_SSFIFO1_R;          // 3a) read first result
-  *y = ADC0_SSFIFO1_R;          // 3b) read second result
+
+  ADC0_PSSI_R = 0x0004;            // 1) initiate SS2
+  while((ADC0_RIS_R & 0x04)==0){};   // 2) wait for conversion done
+	stat = ADC0_SSFSTAT2_R;
+  *x = ADC0_SSFIFO2_R;          // 3a) read first result
+  *y = ADC0_SSFIFO2_R;          // 3b) read second result
+	*z = ADC0_SSFIFO2_R;					// 3c) read third result	
+	stat = ADC0_SSFSTAT2_R;
+		
+		
   *select = SELECT;                // return 0(pressed) or 0x10(not pressed)
-  ADC0_ISC_R = 0x0002;             // 4) acknowledge completion
+  ADC0_ISC_R = 0x0004;             // 4) acknowledge completion
 }
