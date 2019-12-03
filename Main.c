@@ -117,9 +117,11 @@ void Producer(void){
 		}
 		else if (count == 1) {
 			ball_x = data1;
+			count++;
 		}
 		else if (count == 2) {
 			ball_y = data1;
+			count++;
 		}
 	}
 	JsFifo_Put(data); // send to consumer 
