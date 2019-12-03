@@ -595,6 +595,7 @@ int OS_AddSW1Task(void(*task)(void), unsigned long priority) {
 // This task can call issue OS_Signal, it can call OS_AddThread
 // This task does not have a Thread ID
 int OS_AddSW2Task(void(*task)(void), unsigned long priority) { 
-	// Your code here.
+	ButtonTwoTask = task;
+	ButtonTwoInit(priority);
 	return 1;
 }

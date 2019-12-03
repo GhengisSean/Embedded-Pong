@@ -290,5 +290,4 @@ void BSP_LCD_OutputInit(void);
 // outputs: none
 void BSP_LCD_DrawCrosshair(int16_t x, int16_t y, int16_t bgColor);
 
-//creates 5x5 "ball" (it's just a square lol)
 void BSP_LCD_DrawBall(int x, int y, uint16_t color);
