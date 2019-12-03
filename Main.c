@@ -174,6 +174,9 @@ void Consumer(void){
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
 		
+		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
+		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+		
 		l_paddle_y = data.x;
 		BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
 		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
@@ -182,8 +185,7 @@ void Consumer(void){
 		BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
 		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw paddle
 		
-		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
-		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+
 		
 		OS_bSignal(&LCDFree);
 		prevx = l_paddle_y; 
