@@ -35,7 +35,7 @@ extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
 int16_t x = 63;  			// horizontal position of the crosshair, initially 63
 int16_t y = 63;  			// vertical position of the crosshair, initially 63
-int16_t prevx, prevy;	// Previous x and y values of the crosshair
+int16_t prevx, prevy = 63;	// Previous x and y values of the crosshair
 uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
