@@ -17,21 +17,24 @@
 #include "joystick.h"
 #include "PORTE.h"
 #include <math.h>
-#include <time.h>
-#include <stdlib.h>
 
 // Constants
 #define BGCOLOR     					LCD_BLACK
 #define CROSSSIZE            	5
 #define PERIOD               	4000000   // DAS 20Hz sampling period in system time units
+#define PERIOD_1							4000000
 #define PSEUDOPERIOD         	8000000
 #define LIFETIME             	1000
 #define RUNLENGTH            	600 // 30 seconds run length
 #define PI 3.14159265
 
 #define PADDLEHEIGHT					25
-#define L_PADDLEX							20
-#define R_PADDLEX							107
+#define PADDLEX								10
+#define PADDLEY								117
+
+#define PADDLEHEIGHT					25
+#define L_PADDLEX							10
+#define R_PADDLEX							117
 
 #define	BALLRAD								3
 
@@ -39,7 +42,7 @@ extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
 int16_t x = 63;  			// horizontal position of the crosshair, initially 63
 int16_t y = 63;  			// vertical position of the crosshair, initially 63
-int16_t prevx, prevy;	// Previous x and y values of the crosshair
+int16_t prevx, prevy = 63;	// Previous x and y values of the crosshair
 uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
@@ -56,12 +59,15 @@ unsigned long Button1PushTime; 	// Time stamp for when button 1 was pushed
 unsigned long Button2PushTime; 	// Time stamp for when button 2 was pushed
 
 void World_Init(void);
+void UpdateBall(void);
 
 
 // Ball stuff ;)
-float ball_x = 63;
-float ball_y = 63;
-//int ball_speed = 7;
+int16_t ball_x = 63;
+int16_t ball_y = 63;
+int16_t ball_xold = 63;
+int16_t ball_yold = 63;
+float ball_speed = 7;
 float ball_angle = 0;
 float x_speed = 0;
 float y_speed = 0;
@@ -80,7 +86,6 @@ void UpdateBall(void){
 	if (ball_x - 3 <= L_PADDLEX &&									//bounce if  ball is touching paddle's x coord (works)
 			ball_y - 3 >= l_paddle_y - PADDLEHEIGHT/2 &&	// bounce if ball is below or at top of paddle
 			ball_y + 3 <= l_paddle_y + PADDLEHEIGHT/2) { // bounce if ball is above or at bottom of paddle
-
 			diff = ball_y - l_paddle_y;
 			
 			switch (diff) {
@@ -124,7 +129,6 @@ void UpdateBall(void){
 	if (ball_x + 3 >= R_PADDLEX &&
 			ball_y - 3 >= r_paddle_y - PADDLEHEIGHT/2 &&
 			ball_y + 3 <= r_paddle_y + PADDLEHEIGHT/2) { 
-				
 			diff = ball_y - r_paddle_y;
 			switch (diff) {
 				
@@ -166,18 +170,57 @@ void UpdateBall(void){
 	
 
 		//detect collision with top or bottom of screen
-		if (ball_y <= 2 || ball_y >= 125) {
-			y_speed *= -1.5;
+		if (ball_y <= 3 || ball_y >= 124) {
+			if (ball_y <= 3) {
+				ball_y = 4;
+			}
+			y_speed *= -1;
 		}
 		
-		BSP_LCD_DrawBall(ball_x, ball_y, LCD_BLACK);
 		ball_x += x_speed;
 		ball_y -= y_speed;
-		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
-//		OS_Suspend();
-//	}
 }
 
+//updates horizontal speed
+int xSpeed(int angle){
+	if (angle < 0){
+		angle += 360;
+	}
+	
+	// next two checks prevent overly-harsh angles, feeling cute, may delete later
+	if (angle < 15 && angle > 0){
+		angle = 15;
+	}
+	
+	else if (angle < 180 && angle > 165){
+		angle = 165;
+	}
+
+	ball_angle = angle;
+	x_speed = cos((angle * PI) / 180) * ball_speed;
+	
+	return x_speed;
+}
+
+//updates horizontal speed
+int ySpeed(int angle){
+	if (angle < 0){
+		angle += 360;
+	}
+	
+	if (angle < 15 && angle > 0){
+		angle = 15;
+	}
+	
+	else if (angle < 180 && angle > 165){
+		angle = 165;
+	}
+
+	ball_angle = angle;
+	y_speed = sin((angle * PI) / 180) * ball_speed;
+	
+	return y_speed;
+}
 
 void Device_Init(void){
 	UART_Init();
@@ -186,15 +229,14 @@ void Device_Init(void){
 }
 
 
-// background thread executed at 20 Hz
 //******** Producer *************** 
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 
 	if (rawy < origin[1]){
-		y = y + ((origin[1] - rawy) >> 9);
+		y = y + ((origin[1] - rawy) >> 5);
 	}
 	else{
-		y = y - ((rawy - origin[1]) >> 9);
+		y = y - ((rawy - origin[1]) >> 5);
 	}
 
 	if (y > 127 - PADDLEHEIGHT/2){
@@ -209,28 +251,23 @@ void Producer(void){
 	uint16_t rawX,rawY; // raw adc value
 	uint8_t select;
 	jsDataType data;
-	unsigned static long LastTime;  // time at previous ADC sample
-	unsigned long thisTime;         // time at current ADC sample
-	long jitter;                    // time between measured and expected, in us
-//	if (NumSamples < RUNLENGTH){
-		BSP_Joystick_Input(&rawX,&rawY,&select);
-		thisTime = OS_Time();       // current time, 12.5 ns
-		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
-		NumSamples++;               // number of samples
-		if(JsFifo_Put(data) == 0){ // send to consumer
-	
+	BSP_Joystick_Input(&rawX,&rawY,&select);
+	UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
+	data.x = r_paddle_y;
+	while (1) { // Recv from Slave
+		int data1 = UART_Recv();
+		if (data1 == 0xFE) {
+			break;
 		}
-
-//	}
-	
+		else {
+			data.x = data1;
+		}
+	}
+	JsFifo_Put(data); // send to consumer 
+	UART_Send4(0xFF, data.y, ball_x, ball_y); // Send To Slave
 }
 
-//--------------end of Task 1-----------------------------
 
-//------------------Task 2--------------------------------
-// background thread executes with SW1 button
-// one foreground task created with button push
-// foreground treads run for 2 sec and die
 // ***********ButtonWork*************
 void ButtonWork(void){
 	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
@@ -256,9 +293,6 @@ void ButtonWork(void){
 } 
 
 //************SW1Push*************
-// Called when SW1 Button pushed
-// Adds another foreground task
-// background threads execute once and return
 void SW1Push(void){
   if(OS_MsTime() > 20 ){ // debounce
     if(OS_AddThread(&ButtonWork,128,4)){
@@ -270,60 +304,33 @@ void SW1Push(void){
 	
 }
 
-//--------------end of Task 2-----------------------------
-
-//------------------Task 3--------------------------------
-
 //******** Consumer *************** 
-// foreground thread, accepts data from producer
-// Display crosshair and its positions
-// inputs:  none
-// outputs: none
 void Consumer(void){
 	while(1){
 		jsDataType data;
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
-		ConsumerCount++;	
-		//BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
-		//BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		l_paddle_y = data.y;
-		BSP_LCD_DrawFastVLine(L_PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
-		BSP_LCD_DrawFastVLine(L_PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
+		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
+		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw left paddle
 		
-		//BSP_LCD_Message(1, 5, 3, "X: ", x);		
-		//BSP_LCD_Message(1, 5, 12, "Y: ", y);
+		r_paddle_y = data.x;
+		BSP_LCD_DrawFastVLine(PADDLEY, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
+		
+		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
+		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+		
 		OS_bSignal(&LCDFree);
-		prevx = data.x; 
-		prevy = data.y;
-		OS_Suspend();
+		prevy = l_paddle_y; 
+		prevx = r_paddle_y;
+		ball_xold = ball_x;
+		ball_yold = ball_y;
 	}
-  OS_Kill();  // done
 }
 
 
-//--------------end of Task 3-----------------------------
-
-
-
-//------------------Task 6--------------------------------
-
-//************ PeriodicUpdater *************** 
-// background thread, do some pseudo works to test if you can add multiple periodic threads
-// inputs:  none
-// outputs: none 
-/*
-void PeriodicUpdater(void){
-	PseudoCount++;
-	
-} */
-
-//--------------end of Task 6-----------------------------
-
-//------------------Task 7--------------------------------
-// background thread executes with button2
-// one foreground task created with button push
 // ***********ButtonWork2*************
 void Restart(void){
 	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
@@ -351,46 +358,32 @@ void Restart(void){
 	PseudoCount = 0;
 	x = 63; y = 63;
 	NumCreated += OS_AddThread(&Consumer,128,1); 
-	//NumCreated += OS_AddThread(&Display,128,3);
   OS_Kill();  // done, OS does not return from a Kill
 } 
 
 //************SW2Push*************
-// Called when Button2 pushed
-// Adds another foreground task
-// background threads execute once and return
 void SW2Push(void){
   if(OS_MsTime() > 20 ){ // debounce
-    if(OS_AddThread(&Restart,128,4)){
-			OS_ClearMsTime();
-      NumCreated++; 
-    }
+    
     OS_ClearMsTime();  // at least 20ms between touches
   }
 	
 }
 
-//--------------end of Task 7-----------------------------
 
-// Fill the screen with the background color
-// Grab initial joystick position to bu used as a reference
+
 void World_Init(void){
-	double range;
-	double div;
-	BSP_LCD_FillScreen(BGCOLOR);
-	BSP_Joystick_Input(&origin[0],&origin[1],&select);
+	BSP_LCD_FillScreen(LCD_BLACK);
+	origin[0] = 0x7FF;
+	origin[1] = 0x7FF;
 	
-	BSP_LCD_DrawFastVLine(L_PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
-	BSP_LCD_DrawFastVLine(R_PADDLEX, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
+	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw left paddle
+	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw right paddle
 	
-	/*
-	srand(time(0));
-	range = ((PI/4) - (PI/-4)); 
-  div = RAND_MAX / range;
-  ball_angle = -1 + (rand() / div);
-	*/
+	
 	ball_angle = PI;
 	x_speed = 5 * cos(ball_angle);
+	
 	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
 }
 
@@ -406,16 +399,13 @@ int main(void){
 
 //*******attach background tasks***********
   //OS_AddSW1Task(&SW1Push, 4);
-	OS_AddSW2Task(&SW2Push, 4);
-  OS_AddPeriodicThread(&Producer, PERIOD, 3); // 2 kHz real time sampling of PD3
-	OS_AddPeriodicThread(&UpdateBall, PERIOD, 3); // 2 kHz real time sampling of PD3
-	//OS_AddPeriodicThread(&PeriodicUpdater, PSEUDOPERIOD, 3);
-	
+	OS_AddSW2Task(&SW2Push, 1);
+  OS_AddPeriodicThread(&Producer, PERIOD, 1); // 2 kHz real time sampling of PD3
+	OS_AddPeriodicThread(&UpdateBall, PERIOD_1, 3); // 2 kHz real time sampling of PD3
  
-  OS_AddThread(&Consumer, 128, 1);
-	//OS_AddThread(&UpdateBall, 128, 1);
+  OS_AddThread(&Consumer, 128, 2); 
 
  
-  OS_Launch(TIME_1MS); // doesn't return, interrupts enabled in here
-	return 0;            // this never executes
+  OS_Launch(TIME_1MS);
+	return 0;
 }
