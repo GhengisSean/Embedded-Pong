@@ -49,33 +49,13 @@ void (*ButtonTwoTask)(void);
 #define NUMTHREADS	20					// Maximum number of threads
 #define STACKSIZE		100      		// Number of 32-bit words in stack
 
-// Macros
-//#define blockSema								// Blocking sempahores
-//#define prioritySched						// Fixed priority scheduler
-//#define aging										// Dynamic priority scheculer with aging
-
 // TCB Data Structure
 struct tcb {
   int32_t *sp;           // Pointer to stack (valid for threads not running
-  struct tcb *next;      // Pointer to the next TCB
+  struct tcb *next;      // Linked list pointer
   uint32_t id;           // Thread #
   uint32_t available;    // Used to indicate if this tcb is available or not
 	uint32_t sleepCt;	     // Sleep counter in MS
-  uint32_t ArriveTime;   // First time thread is added to the system
-  uint32_t WaitTime;     // Elapsed time since thread arrived till it starts execution
-  uint32_t ExecCount;    // Number of times thread is executed (switched to)
-#ifdef blockSema
-  Sema4Type *blockPt;    // Pointer to resource thread is blocked on (0 if not)
-#endif
-#ifdef prioritySched
-#ifdef aging
-  uint32_t age;          // How long the thread has been active
-  uint32_t FixedPriority;// Permanent priority
-  uint32_t WorkPriority; // Temporary priority 
-#else
-	uint32_t priority;
-#endif
-#endif
 };
 typedef struct tcb tcbType;
 
@@ -166,10 +146,6 @@ int OS_AddThread(void(*task)(void),
 	  	if (ThreadNum == 0){  // start add thread
 			tcbs[0].available = 0;
 			tcbs[0].next = &tcbs[0];  // first, create a single cycle
-			tcbs[0].ArriveTime = OS_MsTime();
-//			tcbs[0].WaitTime = 69;
-//			tcbs[0].priority = priority;
-//				tcbs[0].FixedPriority = priority;
 			RunPt = &tcbs[0]; //start from tcbs[0]
 			thread = 0;
 		}
@@ -185,11 +161,6 @@ int OS_AddThread(void(*task)(void),
 			// add this tcb into the link list cycle
 			tcbs[thread].next = tcbs[j].next;  
 			tcbs[j].next = &tcbs[thread];
-			tcbs[thread].ArriveTime = OS_MsTime();
-//			tcbs[thread].WaitTime = 69;
-//			tcbs[thread].priority = priority;
-//			tcbs[thread].FixedPriority = priority;
-//			tcbs[thread].WorkPriority = priority;
 		}
 		tcbs[thread].id = thread;
 	
@@ -213,144 +184,67 @@ unsigned long OS_Id(void) {
 // decrement semaphore 
 // input:  pointer to a counting semaphore
 // output: none
-
-#ifdef blockSema
 void OS_Wait(Sema4Type *semaPt){
-	//blocking
+	// Your code here.
 	OS_DisableInterrupts();
-	semaPt->Value -= 1;
-	if (semaPt->Value < 0) {
-		RunPt->blockPt = semaPt;
-		OS_EnableInterrupts();
-		OS_Suspend();
-		OS_DisableInterrupts();
-	}
-	OS_EnableInterrupts(); 
-}
-
-#else
-void OS_Wait(Sema4Type *semaPt){
 	
-	//cooperative spinlock
-	OS_DisableInterrupts();
-	while (semaPt->Value == 0){
+	while(!(semaPt->Value)) {
 		OS_EnableInterrupts();
 		OS_Suspend();
 		OS_DisableInterrupts();
 	}
+	
 	semaPt->Value -= 1;
 	OS_EnableInterrupts();
 	
 }
-#endif
 
 // ******** OS_Signal ************
 // increment semaphore 
 // input:  pointer to a counting semaphore
 // output: none
-
-#ifdef blockSema
 void OS_Signal(Sema4Type *semaPt){
-	//blocking
-	struct tcb *pt;
+	// Your code here.
 	OS_DisableInterrupts();
 	semaPt->Value += 1;
-	if (semaPt->Value <= 0) {
-		pt = RunPt->next;	
-		while (pt->blockPt != semaPt) {
-			pt = pt->next;
-		}
-		pt->blockPt = 0;
-	}
-	OS_EnableInterrupts(); 
+	OS_EnableInterrupts();
 }
 
-#else 
-void OS_Signal(Sema4Type *semaPt){	
-	//Cooperative spinlock
-	OS_DisableInterrupts();
-	semaPt->Value += 1;
-	OS_EnableInterrupts(); 
-}
-#endif
-	
 // ******** OS_InitSemaphore ************
 // initialize semaphore 
 // input:  pointer to a semaphore
 // output: none
 void OS_InitSemaphore(Sema4Type *semaPt, long value){
-	OS_DisableInterrupts();
+	// Your code here.
 	semaPt->Value = value;
-	OS_EnableInterrupts();
 }
 
 // ******** OS_bWait ************
 // input:  pointer to a binary semaphore
 // output: none
-#ifdef blockSema
 void OS_bWait(Sema4Type *semaPt){
+	// Your code here.
+		OS_DisableInterrupts();
 	
-	//blocking
-	OS_DisableInterrupts();
-	semaPt->Value = 0;
-	if (semaPt->Value < 0){
-		RunPt->blockPt = semaPt;
+	while(!(semaPt->Value)) {
 		OS_EnableInterrupts();
 		OS_Suspend();
 		OS_DisableInterrupts();
 	}
+	
 	semaPt->Value = 0;
 	OS_EnableInterrupts();
-	
 }	
-#else
-void OS_bWait(Sema4Type *semaPt){
-	
-	//cooperative spin
-	OS_DisableInterrupts();
-	while (semaPt->Value == 0){
-		OS_EnableInterrupts();
-		OS_Suspend();
-		OS_DisableInterrupts();
-	}
-	semaPt->Value = 0;
-	OS_EnableInterrupts();
-	
-}
-#endif
 
 // ******** OS_bSignal ************ 
 // input:  pointer to a binary semaphore
 // output: none
-
-#ifdef blockSema
 void OS_bSignal(Sema4Type *semaPt){
-
-	//blocking
-	struct tcb *pt;
-	OS_DisableInterrupts();
-	semaPt->Value = 1;
-	pt = RunPt->next;	
-	if (semaPt-> Value <= 0){
-	
-	while (pt->blockPt != semaPt && pt != RunPt) {
-			pt = pt->next;
-		}
-	}
-	pt->blockPt = 0;
-	OS_EnableInterrupts(); 
-}
-
-#else
-void OS_bSignal(Sema4Type *semaPt){
-	
-	//Cooperative spin
+	// Your code here.
 	OS_DisableInterrupts();
 	semaPt->Value = 1;
 	OS_EnableInterrupts();
-	
 }
-#endif
 
 // ******** OS_Sleep ************
 // place this thread into a dormant state
@@ -358,6 +252,7 @@ void OS_bSignal(Sema4Type *semaPt){
 // output: none
 // OS_Sleep(0) implements cooperative multitasking
 void OS_Sleep(unsigned long sleepTime){
+	// Your code here.
 	RunPt->sleepCt = sleepTime;
 	OS_Suspend();
 }
@@ -381,77 +276,8 @@ void OS_Kill(void){
 }	
 
 void Scheduler(void){
-	
-	//Cooperative spinlock
 	RunPt = RunPt->next;
-	
-	while(RunPt->sleepCt){
-		RunPt = RunPt->next;
-	}
-			
-	if (!RunPt->ExecCount){
-		RunPt->WaitTime = OS_TimeDifference(RunPt->ArriveTime, OS_MsTime());
-	}
-	
-	RunPt->ExecCount++;	
-	
-	
-	
-	/*
-	//blocking
-	RunPt = RunPt->next;
-	
-	while(RunPt->sleepCt || RunPt->blockPt){
-		RunPt = RunPt->next;
-	}
-			
-	if (!RunPt->ExecCount){
-		RunPt->WaitTime = OS_TimeDifference(RunPt->ArriveTime, OS_MsTime());
-	}
-	
-	RunPt->ExecCount++;
-	*/
-	
-	/*
-	//fixed priority
-	uint32_t max = 255;
-	struct tcb *pt;
-	struct tcb *bestPt;
-	pt = RunPt;
-	do {
-		pt = pt->next;
-		if ((pt->priority < max) && (!pt->blockPt) && (!pt->sleepCt)){
-			max = pt->priority;
-			bestPt = pt;
-		}	
-	
-	} while(RunPt != pt);
-	RunPt = bestPt;
-	RunPt->WaitTime = OS_TimeDifference(RunPt->ArriveTime, OS_MsTime());
-	RunPt->ExecCount++;	
-	*/
-/*
-	//Aging
-	uint32_t max = 255;
-	int i = 0;
-	struct tcb *pt;
-	struct tcb *bestPt;
-	pt = RunPt;
-	
-		pt = pt->next;
-		//pt->WorkPriority -= pt->age;
-		for (i = 0, pt = RunPt->next; i < ThreadNum; i++, pt = pt->next) {
-			if ((pt->WorkPriority < max) && (!pt->blockPt) && (!pt->sleepCt)){
-				max = pt->WorkPriority;
-				bestPt = pt;
-			}	
-		}
-	RunPt = bestPt;
-	if (!RunPt->ExecCount) RunPt->WaitTime = OS_TimeDifference(RunPt->ArriveTime, OS_MsTime());
-	RunPt->ExecCount++;		
-	RunPt->age = 0;
-	RunPt->WorkPriority = RunPt->FixedPriority;
-*/	
+	while (RunPt->sleepCt) RunPt = RunPt->next; // skip over sleeping threads
 }
 
 //******** OS_AddPeriodicThread *************** 
@@ -589,19 +415,12 @@ void InitTimer2A(unsigned long period) {
 
 void Timer2A_Handler(void){ 
 	int i;
-	
 	TIMER2_ICR_R = TIMER_ICR_TATOCINT;// acknowledge timer2A timeout
 	MSTime++;
-	
-	for(i = 0; i < NUMTHREADS; i++) {
-	/*	tcbs[i].age++;
-		if (tcbs[i].age >= 10){
-			tcbs[i].age = 0;
-			if(tcbs[i].WorkPriority > 0)
-				tcbs[i].WorkPriority--; 
-		} */
-		if((!tcbs[i].available) && tcbs[i].sleepCt) {
-			tcbs[i].sleepCt -= 1;
+	// decrement sleep counter for all sleeping threads
+	for (i = 0; i < NUMTHREADS; i++){
+		if (tcbs[i].sleepCt){
+			tcbs[i].sleepCt--;
 		}
 	}
 }
@@ -666,12 +485,11 @@ void Timer4A_Handler(void){
 	(*PeriodicTask2)();
 }
 
-// Switch Tasks ------------------------------------------------------------------------
+// Button Tasks ------------------------------------------------------------------------
 
 #define BUTTON1   (*((volatile uint32_t *)0x40007100))  /* PD6 */
 #define BUTTON2   (*((volatile uint32_t *)0x40007200))  /* PD7 */
-volatile static uint32_t Last1,Last2;
-
+volatile static uint32_t Last1, Last2;
 
 void ButtonOneInit(uint8_t priority){
   SYSCTL_RCGCGPIO_R |= 0x00000008; // 1) activate clock for Port D
@@ -760,8 +578,10 @@ void GPIOPortD_Handler(void) {  // called on touch of either SW1 or SW2
 // This task can call OS_Signal  OS_bSignal	 OS_AddThread
 // This task does not have a Thread ID
 int OS_AddSW1Task(void(*task)(void), unsigned long priority) { 
+	// Your code here.
 	ButtonOneTask = task;
 	ButtonOneInit(priority);
+	//OS_AddPeriodicThread(task, 128, priority );
 	return 1;
 }
 
@@ -775,7 +595,6 @@ int OS_AddSW1Task(void(*task)(void), unsigned long priority) {
 // This task can call issue OS_Signal, it can call OS_AddThread
 // This task does not have a Thread ID
 int OS_AddSW2Task(void(*task)(void), unsigned long priority) { 
-	ButtonTwoTask = task;
-	ButtonTwoInit(priority);
+	// Your code here.
 	return 1;
 }

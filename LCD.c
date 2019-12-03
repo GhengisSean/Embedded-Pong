@@ -1455,3 +1455,11 @@ void BSP_LCD_DrawCrosshair(int16_t x, int16_t y, int16_t color) {
 	BSP_LCD_DrawFastHLine(x-4, y, 9, color);
 }
 
+void BSP_LCD_DrawBall(int x, int y, uint16_t color){
+	int start_row = y - 2;
+	int i;
+	for (i = 0; i < 5; i++){
+		BSP_LCD_DrawFastHLine(x-2, start_row, 5, color);
+		start_row--;
+	}
+}

@@ -17,6 +17,8 @@
 #include "joystick.h"
 #include "PORTE.h"
 #include <math.h>
+#include <time.h>
+#include <stdlib.h>
 
 // Constants
 #define BGCOLOR     					LCD_BLACK
@@ -28,8 +30,10 @@
 #define PI 3.14159265
 
 #define PADDLEHEIGHT					25
-#define PADDLEX								20
-#define PADDLEY								107
+#define L_PADDLEX								20
+#define R_PADDLEX								107
+
+#define	BALLRAD								3
 
 extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
@@ -57,77 +61,58 @@ void World_Init(void);
 // Ball stuff ;)
 int16_t ball_x = 63;
 int16_t ball_y = 63;
-int ball_speed = 7;
-int ball_angle = 0;
-int x_speed;
-int y_speed;
+//int ball_speed = 7;
+float ball_angle = 0;
+int x_speed = -4;
+int y_speed = 0;
 
 // Paddle Stuff ;)
 int l_paddle_y = 63;
 int r_paddle_y = 63;
 
-
-
-//updates horizontal speed
-int xSpeed(int angle){
-	if (angle < 0){
-		angle += 360;
-	}
-	
-	// next two checks prevent overly-harsh angles, feeling cute, may delete later
-	if (angle < 15 && angle > 0){
-		angle = 15;
-	}
-	
-	else if (angle < 180 && angle > 165){
-		angle = 165;
-	}
-
-	ball_angle = angle;
-	x_speed = cos((angle * PI) / 180) * ball_speed;
-	
-	return x_speed;
-}
-
-//updates horizontal speed
-int ySpeed(int angle){
-	if (angle < 0){
-		angle += 360;
-	}
-	
-	if (angle < 15 && angle > 0){
-		angle = 15;
-	}
-	
-	else if (angle < 180 && angle > 165){
-		angle = 165;
-	}
-
-	ball_angle = angle;
-	y_speed = sin((angle * PI) / 180) * ball_speed;
-	
-	return y_speed;
-}
-
 // thread to update ball's location
 void UpdateBall(void){
-	ball_x += x_speed;
-	ball_y -= y_speed;
-	// TODO: Call LCD function to redraw the ball
+//	while(1){
+	
+	int diff;
+	
+//detect collisions with left paddle
+	if (ball_x - 2 <= L_PADDLEX &&									//bounce if  ball is touching paddle's x coord (works)
+			ball_y - 2 >= l_paddle_y - PADDLEHEIGHT/2 &&	// bounce if ball is below or at top of paddle
+			ball_y + 2 <= l_paddle_y + PADDLEHEIGHT/2) { // bounce if ball is above or at bottom of paddle
+
+				
+			
+				
+			x_speed *= -1;
+				
+			
+					
+			}
+			
+	//detect collisions with right paddle
+	if (ball_x - 2 >= R_PADDLEX &&
+			ball_y - 2 >= r_paddle_y - PADDLEHEIGHT/2 &&
+			ball_y + 2 <= r_paddle_y + PADDLEHEIGHT/2) {
+			
+			x_speed *= -1;
+					
+			}
+	
+
+		//detect collision with top or bottom of screen
+		if (ball_y <= 2 || ball_y >= 125) {
+			y_speed *= -1;
+		}
+	
+		BSP_LCD_DrawBall(ball_x, ball_y, LCD_BLACK);
+		ball_x += x_speed;
+		ball_y -= y_speed;
+		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+//		OS_Suspend();
+//	}
 }
 
-// thread to detect and react to collisions
-void CollisionHandler(void){
-	
-	//detect collisions with left paddle
-	if (l_paddle_y
-	
-
-	//detect collision with top of screen
-	if (ball_y <= 2 || ball_y >= 125) {
-		y_speed *= -1;
-	}
-}
 
 void Device_Init(void){
 	UART_Init();
@@ -147,10 +132,10 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 		y = y - ((rawy - origin[1]) >> 9);
 	}
 
-	if (y > 127 - CROSSSIZE){
-		y = 127 - CROSSSIZE;}
-	if (y < 0){
-		y = 0;}
+	if (y > 127 - PADDLEHEIGHT/2){
+		y = 127 - PADDLEHEIGHT/2;}
+	if (y < 0 + PADDLEHEIGHT/2){
+		y = 0 + PADDLEHEIGHT/2;}
 	data->y = y;
 	return 1;
 }
@@ -162,7 +147,7 @@ void Producer(void){
 	unsigned static long LastTime;  // time at previous ADC sample
 	unsigned long thisTime;         // time at current ADC sample
 	long jitter;                    // time between measured and expected, in us
-	if (NumSamples < RUNLENGTH){
+//	if (NumSamples < RUNLENGTH){
 		BSP_Joystick_Input(&rawX,&rawY,&select);
 		thisTime = OS_Time();       // current time, 12.5 ns
 		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
@@ -171,7 +156,7 @@ void Producer(void){
 	
 		}
 
-	}
+//	}
 	
 }
 
@@ -230,24 +215,24 @@ void SW1Push(void){
 // inputs:  none
 // outputs: none
 void Consumer(void){
-	while(NumSamples < RUNLENGTH){
+	while(1){
 		jsDataType data;
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
 		ConsumerCount++;	
-		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
-		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
+		//BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
+		//BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		l_paddle_y = data.y;
-		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
-		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
+		BSP_LCD_DrawFastVLine(L_PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
+		BSP_LCD_DrawFastVLine(L_PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
 		
 		//BSP_LCD_Message(1, 5, 3, "X: ", x);		
 		//BSP_LCD_Message(1, 5, 12, "Y: ", y);
 		OS_bSignal(&LCDFree);
 		prevx = data.x; 
 		prevy = data.y;
-		
+		OS_Suspend();
 	}
   OS_Kill();  // done
 }
@@ -325,13 +310,22 @@ void SW2Push(void){
 // Fill the screen with the background color
 // Grab initial joystick position to bu used as a reference
 void World_Init(void){
+	double range;
+	double div;
 	BSP_LCD_FillScreen(BGCOLOR);
 	BSP_Joystick_Input(&origin[0],&origin[1],&select);
 	
-	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
-	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
+	BSP_LCD_DrawFastVLine(L_PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
+	BSP_LCD_DrawFastVLine(R_PADDLEX, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
 	
-
+	/*
+	srand(time(0));
+	range = ((PI/4) - (PI/-4)); 
+  div = RAND_MAX / range;
+  ball_angle = -1 + (rand() / div);
+	*/
+	ball_angle = PI/6;
+	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
 }
 
 //******************* Main Function**********
@@ -348,10 +342,12 @@ int main(void){
   //OS_AddSW1Task(&SW1Push, 4);
 	OS_AddSW2Task(&SW2Push, 4);
   OS_AddPeriodicThread(&Producer, PERIOD, 3); // 2 kHz real time sampling of PD3
+	OS_AddPeriodicThread(&UpdateBall, PERIOD, 3); // 2 kHz real time sampling of PD3
 	//OS_AddPeriodicThread(&PeriodicUpdater, PSEUDOPERIOD, 3);
 	
  
-  OS_AddThread(&Consumer, 128, 1); 
+  OS_AddThread(&Consumer, 128, 1);
+	//OS_AddThread(&UpdateBall, 128, 1);
 
  
   OS_Launch(TIME_1MS); // doesn't return, interrupts enabled in here
