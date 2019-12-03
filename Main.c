@@ -174,11 +174,11 @@ void Consumer(void){
 		
 		l_paddle_y = data.x;
 		BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
-		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw paddle
+		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
 		
 		r_paddle_y = data.y;
 		BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
-		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw paddle
+		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw paddle
 		
 		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
 		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
@@ -240,8 +240,8 @@ void World_Init(void){
 	origin[0] = 0x7FF;
 	origin[1] = 0x7FF;
 	
-	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
-	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
+	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw left paddle
+	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw right paddle
 	
 	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
 
