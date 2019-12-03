@@ -40,6 +40,8 @@ uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
 
+int count = 99;
+
 static unsigned long NumCreated;   		// Number of foreground threads created
 unsigned long NumSamples;   		// Incremented every ADC sample, in Producer
 unsigned long UpdateWork;   		// Incremented every update on position values
@@ -61,6 +63,8 @@ int ball_speed = 7;
 int ball_angle = 0;
 int x_speed;
 int y_speed;
+int16_t ball_xold = 63;
+int16_t ball_yold = 63;
 
 // Paddle Stuff ;)
 int l_paddle_y = 63;
@@ -136,7 +140,6 @@ void Device_Init(void){
 }
 
 
-// background thread executed at 20 Hz
 //******** Producer *************** 
 int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 
@@ -159,19 +162,30 @@ void Producer(void){
 	uint16_t rawX,rawY; // raw adc value
 	uint8_t select;
 	jsDataType data;
-	unsigned static long LastTime;  // time at previous ADC sample
-	unsigned long thisTime;         // time at current ADC sample
-	long jitter;                    // time between measured and expected, in us
-	if (NumSamples < RUNLENGTH){
-		BSP_Joystick_Input(&rawX,&rawY,&select);
-		thisTime = OS_Time();       // current time, 12.5 ns
-		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
-		NumSamples++;               // number of samples
-		if(JsFifo_Put(data) == 0){ // send to consumer
-	
+	BSP_Joystick_Input(&rawX,&rawY,&select);
+	UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
+	data.x = l_paddle_y;
+	while (1) { // Recv from Slave
+		int data1 = UART_Recv();
+		if (data1 == 0xFE) {
+			break;
 		}
-
+		else if (data1 == 0xFF){
+			count = 0;
+		}
+		else if (count == 0) {
+			data.x = data1;
+			count++;
+		}
+		else if (count == 1) {
+			ball_x = data1;
+		}
+		else if (count == 2) {
+			ball_y = data1;
+		}
 	}
+	JsFifo_Put(data); // send to consumer 
+	UART_Send(data.y); // Send To Slave
 	
 }
 
@@ -206,9 +220,6 @@ void ButtonWork(void){
 } 
 
 //************SW1Push*************
-// Called when SW1 Button pushed
-// Adds another foreground task
-// background threads execute once and return
 void SW1Push(void){
   if(OS_MsTime() > 20 ){ // debounce
     if(OS_AddThread(&ButtonWork,128,4)){
@@ -220,54 +231,32 @@ void SW1Push(void){
 	
 }
 
-//--------------end of Task 2-----------------------------
-
-//------------------Task 3--------------------------------
 
 //******** Consumer *************** 
-// foreground thread, accepts data from producer
-// Display crosshair and its positions
-// inputs:  none
-// outputs: none
 void Consumer(void){
-	while(NumSamples < RUNLENGTH){
+	while(1){
 		jsDataType data;
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
-		ConsumerCount++;	
-//		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
-//		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
-
-		l_paddle_y = data.y;
-		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
-		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
 		
-		//BSP_LCD_Message(1, 5, 3, "X: ", x);		
-		//BSP_LCD_Message(1, 5, 12, "Y: ", y);
+		l_paddle_y = data.x;
+		BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw paddle
+		
+		r_paddle_y = data.y;
+		BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw paddle
+		
+		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
+		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+		
 		OS_bSignal(&LCDFree);
-		prevx = data.x; 
-		prevy = data.y;
-		UART_OutUDec(10);
+		prevx = l_paddle_y; 
+		prevy = r_paddle_y;
+		ball_xold = ball_x;
+		ball_yold = ball_y;
 	}
-  OS_Kill();  // done
 }
-
-
-//--------------end of Task 3-----------------------------
-
-
-
-//------------------Task 6--------------------------------
-
-//************ PeriodicUpdater *************** 
-// background thread, do some pseudo works to test if you can add multiple periodic threads
-// inputs:  none
-// outputs: none 
-/*
-void PeriodicUpdater(void){
-	PseudoCount++;
-	
-} */
 
 //--------------end of Task 6-----------------------------
 
@@ -326,11 +315,14 @@ void SW2Push(void){
 // Grab initial joystick position to bu used as a reference
 void World_Init(void){
 	BSP_LCD_FillScreen(BGCOLOR);
-	BSP_Joystick_Input(&origin[0],&origin[1],&select);
+	//BSP_Joystick_Input(&origin[0],&origin[1],&select);
+	origin[0] = 0x7FF;
+	origin[1] = 0x7FF;
 	
 	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
 	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
 	
+	BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
 
 }
 

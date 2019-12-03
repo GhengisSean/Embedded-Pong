@@ -1,6 +1,6 @@
 // UART.c
 // Runs on LM4F120/TM4C123
-// Use UART2 to implement bidirectional data transfer to and from a
+// Use UART1 to implement bidirectional data transfer to and from a
 // computer running HyperTerminal.  This time, interrupts and FIFOs
 // are used.
 // Daniel Valvano
@@ -38,11 +38,12 @@
 #define UART_FR_RXFF            0x00000040  // UART Receive FIFO Full
 #define UART_FR_TXFF            0x00000020  // UART Transmit FIFO Full
 #define UART_FR_RXFE            0x00000010  // UART Receive FIFO Empty
+#define UART_FR_TXFE						0x00000080
 #define UART_LCRH_WLEN_8        0x00000060  // 8 bit word length
 #define UART_LCRH_FEN           0x00000010  // UART Enable FIFOs
 #define UART_CTL_UARTEN         0x00000001  // UART Enable
-#define UART_IFLS_RX1_2         0x00000000  // RX FIFO >= 1/2 full
-#define UART_IFLS_TX1_2         0x00000000  // TX FIFO <= 1/2 full
+#define UART_IFLS_RX1_2         0x00000010  // RX FIFO >= 1/2 full
+#define UART_IFLS_TX1_2         0x00000002  // TX FIFO <= 1/2 full
 #define UART_IM_RTIM            0x00000040  // UART Receive Time-Out Interrupt
                                             // Mask
 #define UART_IM_TXIM            0x00000020  // UART Transmit Interrupt Mask
@@ -69,42 +70,69 @@ void WaitForInterrupt(void);  // low power mode
 //AddIndexFifo(Rx_UART, FIFOSIZE, char, FIFOSUCCESS, FIFOFAIL)
 //AddIndexFifo(Tx_UART, FIFOSIZE, char, FIFOSUCCESS, FIFOFAIL)
 	
-// Initialize UART2
+// Initialize UART1
 // Baud rate is 115200 bits/sec
 void UART_Init(void){
-  SYSCTL_RCGCUART_R |= 0x04;            // activate UART2
-  SYSCTL_RCGCGPIO_R |= 0x08;            // activate port D
+  SYSCTL_RCGCUART_R |= 0x02;            // activate UART1
+  SYSCTL_RCGCGPIO_R |= 0x02;            // activate port B
   Rx_UARTFifo_Init();                        // initialize empty FIFOs
   Tx_UARTFifo_Init();
 	
-	GPIO_PORTD_AFSEL_R |= 0xC0;           // enable alt funct on PD6-7
-  GPIO_PORTD_DEN_R |= 0xC0;             // enable digital I/O on PD6-7
-	
-  UART2_CTL_R &= ~UART_CTL_UARTEN;      // disable UART
-  UART2_IBRD_R = 43;                    // IBRD = int(80,000,000 / (16 * 115,200)) = int(43.4028)
-  UART2_FBRD_R = 26;                     // FBRD = int(0.4028 * 64 + 0.5) = 26
+  UART1_CTL_R &= ~UART_CTL_UARTEN;      // disable UART
+  UART1_IBRD_R = 43;                    // IBRD = int(80,000,000 / (16 * 115,200)) = int(43.4028)
+  UART1_FBRD_R = 26;                     // FBRD = int(0.4028 * 64 + 0.5) = 26
                                         // 8 bit word length (no parity bits, one stop bit, FIFOs)
-  UART2_LCRH_R = (UART_LCRH_WLEN_8|UART_LCRH_FEN);
-  UART2_IFLS_R &= ~0x3F;                // clear TX and RX interrupt FIFO level fields
+  UART1_LCRH_R = (UART_LCRH_WLEN_8|UART_LCRH_FEN);
+  UART1_IFLS_R &= ~0x3F;                // clear TX and RX interrupt FIFO level fields
                                         // configure interrupt for TX FIFO <= 1/8 full
                                         // configure interrupt for RX FIFO >= 1/8 full
-  UART2_IFLS_R += (UART_IFLS_TX1_2|UART_IFLS_RX1_2);
+  UART1_IFLS_R += (UART_IFLS_TX1_2|UART_IFLS_RX1_2);
                                         // enable TX and RX FIFO interrupts and RX time-out interrupt
-  UART2_IM_R |= (UART_IM_RXIM|UART_IM_TXIM|UART_IM_RTIM);
-  UART2_CTL_R |= UART_CTL_UARTEN;       // enable UART
-                                        // configure PA1-0 as UART
-  GPIO_PORTD_PCTL_R = (GPIO_PORTD_PCTL_R&0x00FFFFFF)+0x11000000;
-  GPIO_PORTD_AMSEL_R = 0;               // disable analog functionality on PD
-                                        // UART2=priority 2
-  NVIC_PRI1_R = (NVIC_PRI1_R&0xFFFF00FF)|0x00008000; // bits 13-15
-  NVIC_EN0_R = NVIC_EN0_INT5;           // enable interrupt 5 in NVIC
+  UART1_CTL_R |= UART_CTL_UARTEN;       // enable UART
+                                        // configure PB1-0 as UART
+	GPIO_PORTB_AFSEL_R |= 0x03;           // enable alt funct on PB1-0
+  GPIO_PORTB_DEN_R |= 0x03;             // enable digital I/O on PB1-0
+  GPIO_PORTB_PCTL_R = (GPIO_PORTB_PCTL_R&0xFFFFFFFF)+0x00000011;
+  GPIO_PORTB_AMSEL_R = 0;               // disable analog functionality on PB
+                                        // UART1=priority 2
+  //NVIC_PRI1_R = (NVIC_PRI1_R&0xFFFF00FF)|0x00008000; // bits 13-15
+  //NVIC_EN0_R = NVIC_EN0_INT5;           // enable interrupt 5 in NVIC
+}
+
+void UART_Send4(char data1, char data2, char data3, char data4) {
+	if ((UART1_FR_R&UART_FR_TXFE) == UART_FR_TXFE) {
+		UART1_DR_R = data1;
+		UART1_DR_R = data2;
+		UART1_DR_R = data3;
+		UART1_DR_R = data4;
+	}		
+	
+}
+
+void UART_Send(char data) {
+	if ((UART1_FR_R&UART_FR_TXFF) == 0x00000000) {
+		UART1_DR_R = data;
+	}		
+	
+}
+
+uint8_t UART_Recv(void) {
+	uint8_t data;
+	
+	if ((UART1_FR_R&UART_FR_RXFE) == 0) {
+		data = UART1_DR_R;
+	}
+	else {
+		data = 0xFE;
+	}
+	return data;
 }
 // copy from hardware RX FIFO to software RX FIFO
 // stop when hardware RX FIFO is empty or software RX FIFO is full
 void static copyHardwareToSoftware(void){
   char letter;
-  while(((UART2_FR_R&UART_FR_RXFE) == 0) && (Rx_UARTFifo_Size() < (FIFOSIZE - 1))){
-    letter = UART2_DR_R;
+  while(((UART1_FR_R&UART_FR_RXFE) == 0) && (Rx_UARTFifo_Size() < (FIFOSIZE - 1))){
+    letter = UART1_DR_R;
     Rx_UARTFifo_Put(letter);
   }
 }
@@ -112,9 +140,9 @@ void static copyHardwareToSoftware(void){
 // stop when software TX FIFO is empty or hardware TX FIFO is full
 void static copySoftwareToHardware(void){
   char letter;
-  while(((UART2_FR_R&UART_FR_TXFF) == 0) && (Tx_UARTFifo_Size() > 0)){
+  while(((UART1_FR_R&UART_FR_TXFF) == 0) && (Tx_UARTFifo_Size() > 0)){
     Tx_UARTFifo_Get(&letter);
-    UART2_DR_R = letter;
+    UART1_DR_R = letter;
   }
 }
 // input ASCII character from UART
@@ -128,30 +156,30 @@ char UART_InChar(void){
 // spin if TxFifo is full
 void UART_OutChar(char data){
   while(Tx_UARTFifo_Put(data) == FIFOFAIL){};
-  UART2_IM_R &= ~UART_IM_TXIM;          // disable TX FIFO interrupt
+  UART1_IM_R &= ~UART_IM_TXIM;          // disable TX FIFO interrupt
   copySoftwareToHardware();
-  UART2_IM_R |= UART_IM_TXIM;           // enable TX FIFO interrupt
+  UART1_IM_R |= UART_IM_TXIM;           // enable TX FIFO interrupt
 }
 // at least one of three things has happened:
 // hardware TX FIFO goes from 3 to 2 or less items
 // hardware RX FIFO goes from 1 to 2 or more items
 // UART receiver has timed out
-void UART2_Handler(void){
-  if(UART2_RIS_R&UART_RIS_TXRIS){       // hardware TX FIFO <= 2 items
-    UART2_ICR_R = UART_ICR_TXIC;        // acknowledge TX FIFO
+void UART1_Handler(void){
+  if(UART1_RIS_R&UART_RIS_TXRIS){       // hardware TX FIFO <= 2 items
+    UART1_ICR_R = UART_ICR_TXIC;        // acknowledge TX FIFO
     // copy from software TX FIFO to hardware TX FIFO
     copySoftwareToHardware();
     if(Tx_UARTFifo_Size() == 0){             // software TX FIFO is empty
-      UART2_IM_R &= ~UART_IM_TXIM;      // disable TX FIFO interrupt
+      UART1_IM_R &= ~UART_IM_TXIM;      // disable TX FIFO interrupt
     }
   }
-  if(UART2_RIS_R&UART_RIS_RXRIS){       // hardware RX FIFO >= 2 items
-    UART2_ICR_R = UART_ICR_RXIC;        // acknowledge RX FIFO
+  if(UART1_RIS_R&UART_RIS_RXRIS){       // hardware RX FIFO >= 2 items
+    UART1_ICR_R = UART_ICR_RXIC;        // acknowledge RX FIFO
     // copy from hardware RX FIFO to software RX FIFO
     copyHardwareToSoftware();
   }
-  if(UART2_RIS_R&UART_RIS_RTRIS){       // receiver timed out
-    UART2_ICR_R = UART_ICR_RTIC;        // acknowledge receiver time out
+  if(UART1_RIS_R&UART_RIS_RTRIS){       // receiver timed out
+    UART1_ICR_R = UART_ICR_RTIC;        // acknowledge receiver time out
     // copy from hardware RX FIFO to software RX FIFO
     copyHardwareToSoftware();
   }

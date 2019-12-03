@@ -44,6 +44,10 @@
 // Output: none
 void UART_Init(void);
 
+void UART_Send(char data);
+void UART_Send4(char data1, char data2, char data3, char data4);
+uint8_t UART_Recv(void);
+
 //------------UART_InChar------------
 // Wait for new serial port input
 // Input: none
