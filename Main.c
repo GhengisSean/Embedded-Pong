@@ -17,6 +17,8 @@
 #include "joystick.h"
 #include "PORTE.h"
 #include <math.h>
+#include <time.h>
+#include <stdlib.h>
 
 // Constants
 #define BGCOLOR     					LCD_BLACK
@@ -30,6 +32,8 @@
 #define PADDLEHEIGHT					25
 #define PADDLEX								20
 #define PADDLEY								107
+
+#define	BALLRAD								3
 
 extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
@@ -57,17 +61,17 @@ void World_Init(void);
 // Ball stuff ;)
 int16_t ball_x = 63;
 int16_t ball_y = 63;
-int ball_speed = 7;
-int ball_angle = 0;
-int x_speed;
-int y_speed;
+//int ball_speed = 7;
+float ball_angle = 0;
+int x_speed = -5;
+int y_speed = 0;
 
 // Paddle Stuff ;)
 int l_paddle_y = 63;
 int r_paddle_y = 63;
 
 
-
+/*
 //updates horizontal speed
 int xSpeed(int angle){
 	if (angle < 0){
@@ -109,6 +113,7 @@ int ySpeed(int angle){
 	return y_speed;
 }
 
+*/
 // thread to update ball's location
 void UpdateBall(void){
 	ball_x += x_speed;
@@ -120,10 +125,31 @@ void UpdateBall(void){
 void CollisionHandler(void){
 	
 	//detect collisions with left paddle
-	if (l_paddle_y
+	if (ball_y - BALLRAD < l_paddle_y + PADDLEHEIGHT/2 &&
+			ball_y + BALLRAD > l_paddle_y - PADDLEHEIGHT/2 &&
+			ball_x - BALLRAD < PADDLEX + 1/2) {
+			
+				if (ball_x > PADDLEX) {
+					float diff = y - (l_paddle_y - PADDLEHEIGHT/2);
+					float rad = (45 * PI) / 180;
+					x_speed *= -1;
+					
+				}
+			
+			}
+			
+	//detect collisions with right paddle
+		if (ball_y - BALLRAD < r_paddle_y + PADDLEHEIGHT/2 &&
+		ball_y + BALLRAD > r_paddle_y - PADDLEHEIGHT/2 &&
+		ball_x + BALLRAD > PADDLEY + 1/2) {	
+			
+			if (ball_x < PADDLEX) {
+				x_speed *= -1;
+			}
+		}
 	
 
-	//detect collision with top of screen
+	//detect collision with top or bottom of screen
 	if (ball_y <= 2 || ball_y >= 125) {
 		y_speed *= -1;
 	}
@@ -147,10 +173,10 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 		y = y - ((rawy - origin[1]) >> 9);
 	}
 
-	if (y > 127 - CROSSSIZE){
-		y = 127 - CROSSSIZE;}
-	if (y < 0){
-		y = 0;}
+	if (y > 127 - PADDLEHEIGHT/2){
+		y = 127 - PADDLEHEIGHT/2;}
+	if (y < 0 + PADDLEHEIGHT/2){
+		y = 0 + PADDLEHEIGHT/2;}
 	data->y = y;
 	return 1;
 }
@@ -162,7 +188,7 @@ void Producer(void){
 	unsigned static long LastTime;  // time at previous ADC sample
 	unsigned long thisTime;         // time at current ADC sample
 	long jitter;                    // time between measured and expected, in us
-	if (NumSamples < RUNLENGTH){
+//	if (NumSamples < RUNLENGTH){
 		BSP_Joystick_Input(&rawX,&rawY,&select);
 		thisTime = OS_Time();       // current time, 12.5 ns
 		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
@@ -171,7 +197,7 @@ void Producer(void){
 	
 		}
 
-	}
+//	}
 	
 }
 
@@ -230,13 +256,13 @@ void SW1Push(void){
 // inputs:  none
 // outputs: none
 void Consumer(void){
-	while(NumSamples < RUNLENGTH){
+	while(1){
 		jsDataType data;
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
 		ConsumerCount++;	
-		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
-		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
+		//BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
+		//BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
 		l_paddle_y = data.y;
 		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
@@ -325,12 +351,21 @@ void SW2Push(void){
 // Fill the screen with the background color
 // Grab initial joystick position to bu used as a reference
 void World_Init(void){
+	double range;
+	double div;
 	BSP_LCD_FillScreen(BGCOLOR);
 	BSP_Joystick_Input(&origin[0],&origin[1],&select);
 	
 	BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw left paddle
 	BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_WHITE); //draw right paddle
 	
+	/*
+	srand(time(0));
+	range = ((PI/4) - (PI/-4)); 
+  div = RAND_MAX / range;
+  ball_angle = -1 + (rand() / div);
+	*/
+	ball_angle = PI/6;
 
 }
 
