@@ -47,6 +47,8 @@ uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
 
+uint8_t cond = 0;
+
 static unsigned long NumCreated;   		// Number of foreground threads created
 unsigned long NumSamples;   		// Incremented every ADC sample, in Producer
 unsigned long UpdateWork;   		// Incremented every update on position values
@@ -57,6 +59,12 @@ unsigned long Button1RespTime; 	// Latency for Task 2 = Time between button1 pus
 unsigned long Button2RespTime; 	// Latency for Task 7 = Time between button2 push and response on LCD
 unsigned long Button1PushTime; 	// Time stamp for when button 1 was pushed
 unsigned long Button2PushTime; 	// Time stamp for when button 2 was pushed
+
+char* s1 = "Paused";
+char* sw = "Winner";
+char* sl = "Loser";
+char* s4 = "Btn 2 to play again";
+
 
 void World_Init(void);
 void UpdateBall(void);
@@ -80,6 +88,7 @@ int r_paddle_y = 63;
 void UpdateBall(void){
 //	while(1){
 	
+	if (cond == 0) {
 	int diff;
 	
 //detect collisions with left paddle
@@ -177,8 +186,18 @@ void UpdateBall(void){
 			y_speed *= -1;
 		}
 		
+		if (ball_x <= 7) { // LOSS
+			UART_Send(0xFC);
+			cond = 13;
+		}
+		if (ball_x >= 120) { // WIN
+			UART_Send(0xFB);
+			cond = 12;
+		}
+		
 		ball_x += x_speed;
 		ball_y -= y_speed;
+	}
 }
 
 //updates horizontal speed
@@ -248,103 +267,112 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 }
 
 void Producer(void){
-	uint16_t rawX,rawY; // raw adc value
-	uint8_t select;
-	jsDataType data;
-	BSP_Joystick_Input(&rawX,&rawY,&select);
-	UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
-	data.x = r_paddle_y;
-	while (1) { // Recv from Slave
-		int data1 = UART_Recv();
-		if (data1 == 0xFE) {
-			break;
+		uint16_t rawX,rawY; // raw adc value
+		uint8_t select;
+		jsDataType data;
+		data.x = r_paddle_y;
+		data.y = l_paddle_y;
+		while (1) { // Recv from Slave
+			int data1 = UART_Recv();
+			if (data1 == 0xFE) {
+				break;
+			}
+			else if (data1 == 0xFA) { // reset
+				World_Init();
+			}
+			else if (data1 == 0xF0) { // pause
+				cond = 0;
+			}
+			else if (data1 == 0xF1) { // pause
+				cond = 1;
+			}
+			else {
+				data.x = data1;
+			}
 		}
-		else if (data1 == 0xFA) {
-			World_Init();
+		if (cond == 0) {
+			BSP_Joystick_Input(&rawX,&rawY,&select);
+			UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
+			UART_Send4(0xFF, data.y, ball_x, ball_y); // Send To Slave
 		}
-		else {
-			data.x = data1;
-		}
-	}
-	JsFifo_Put(data); // send to consumer 
-	UART_Send4(0xFF, data.y, ball_x, ball_y); // Send To Slave
+		JsFifo_Put(data); // send to consumer 
 }
 
-
-// ***********ButtonWork*************
-void ButtonWork(void){
-	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
-	StartTime = OS_MsTime();
-	ButtonStartTime = OS_Time();
-	ElapsedTime = 0;
-	OS_bWait(&LCDFree);
-	BSP_LCD_FillScreen(BGCOLOR);
-	Button1RespTime = (Button1RespTime + (OS_Time() - ButtonStartTime)) >> 1;
-	while (ElapsedTime < LIFETIME){
-		CurrentTime = OS_MsTime();
-		ElapsedTime = CurrentTime - StartTime;
-		BSP_LCD_Message(0,5,0,"Life Time:",LIFETIME);
-		BSP_LCD_Message(1,0,0,"Horizontal Area:",area[0]);
-		BSP_LCD_Message(1,1,0,"Vertical Area:",area[1]);
-		BSP_LCD_Message(1,2,0,"Elapsed Time:",ElapsedTime);
-		OS_Sleep(50);
-		
-	}
-	BSP_LCD_FillScreen(BGCOLOR);
-	OS_bSignal(&LCDFree);
-  OS_Kill();  // done, OS does not return from a Kill
-} 
-
-//************SW1Push*************
-void SW1Push(void){
-  if(OS_MsTime() > 20 ){ // debounce
-    if(OS_AddThread(&ButtonWork,128,4)){
-			OS_ClearMsTime();
-      NumCreated++; 
-    }
-    OS_ClearMsTime();  // at least 20ms between touches
-  }
-	
-}
 
 //******** Consumer *************** 
 void Consumer(void){
 	while(1){
-		jsDataType data;
-		JsFifo_Get(&data);
-		OS_bWait(&LCDFree);
-
-		l_paddle_y = data.y;
-		BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
-		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw left paddle
-		
-		r_paddle_y = data.x;
-		BSP_LCD_DrawFastVLine(PADDLEY, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
-		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
-		
-		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
-		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
-		
-		OS_bSignal(&LCDFree);
-		prevy = l_paddle_y; 
-		prevx = r_paddle_y;
-		ball_xold = ball_x;
-		ball_yold = ball_y;
+		if (cond == 12) { //WIN
+				BSP_LCD_FillScreen(LCD_BLACK);
+				BSP_LCD_DrawString(8, 5, sw, LCD_GREEN);
+				BSP_LCD_DrawString(1, 6, s4, LCD_WHITE);
+				cond = 2;
+		}
+		else if (cond == 13) { // LOSS
+				BSP_LCD_FillScreen(LCD_BLACK);
+				BSP_LCD_DrawString(8, 5, sl, LCD_RED);
+				BSP_LCD_DrawString(1, 6, s4, LCD_WHITE);
+				cond = 3;
+		}
+		else if (cond == 1) {
+			BSP_LCD_DrawString(0, 0, s1, LCD_WHITE);
+		}
+		else if (cond == 0) {
+			jsDataType data;
+			JsFifo_Get(&data);
+			OS_bWait(&LCDFree);
+			
+			BSP_LCD_DrawString(0, 0, s1, LCD_BLACK);
+			
+			BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
+			BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+			
+			l_paddle_y = data.y;
+			BSP_LCD_DrawFastVLine(PADDLEX, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase left paddle
+			BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw left paddle
+			
+			r_paddle_y = data.x;
+			BSP_LCD_DrawFastVLine(PADDLEY, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+			BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
+			
+			OS_bSignal(&LCDFree);
+			prevy = l_paddle_y; 
+			prevx = r_paddle_y;
+			ball_xold = ball_x;
+			ball_yold = ball_y;
+		}
 	}
+}
+
+//************SW2Push*************
+void SW1Push(void){
+  if(OS_MsTime() > 20 ){ // debounce
+		if (cond == 0) {
+			UART_Send(0xF1);
+			cond = 1;
+		}
+		else if (cond == 1) {
+			UART_Send(0xF0);
+			cond = 0;
+		}
+    OS_ClearMsTime();  // at least 20ms between touches
+  }
 }
 
 //************SW2Push*************
 void SW2Push(void){
   if(OS_MsTime() > 20 ){ // debounce
 		UART_Send(0xFA);
+		cond = 0;
 		World_Init();
     OS_ClearMsTime();  // at least 20ms between touches
   }
 }
 
 
-
 void World_Init(void){
+	cond = 0;
+	
 	x = 63;
 	y = 63;
 	
@@ -392,7 +420,7 @@ int main(void){
   JsFifo_Init();
 
 //*******attach background tasks***********
-  //OS_AddSW1Task(&SW1Push, 4);
+  OS_AddSW1Task(&SW1Push, 1);
 	OS_AddSW2Task(&SW2Push, 1);
   OS_AddPeriodicThread(&Producer, PERIOD, 1); // 2 kHz real time sampling of PD3
 	OS_AddPeriodicThread(&UpdateBall, PERIOD_1, 3); // 2 kHz real time sampling of PD3
