@@ -40,6 +40,13 @@ uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
 
+uint8_t cond = 0; 
+
+char* s1 = "Paused";
+char* sw = "Winner";
+char* sl = "Loser";
+char* s4 = "Btn 2 to play again";
+
 int count = 99;
 
 static unsigned long NumCreated;   		// Number of foreground threads created
@@ -94,108 +101,114 @@ int UpdatePosition(uint16_t rawx, uint16_t rawy, jsDataType* data){
 }
 
 void Producer(void){
-	uint16_t rawX,rawY; // raw adc value
-	uint8_t select;
-	jsDataType data;
-	BSP_Joystick_Input(&rawX,&rawY,&select);
-	UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
-	data.x = l_paddle_y;
-	while (1) { // Recv from master
-		int data1 = UART_Recv();
-		if (data1 == 0xFE) {
-			break;
+		uint16_t rawX,rawY; // raw adc value
+		uint8_t select;
+		jsDataType data;
+		data.x = l_paddle_y;
+		data.y = r_paddle_y;
+		while (1) { // Recv from master
+			int data1 = UART_Recv();
+			if (data1 == 0xFE) {
+				break;
+			}
+			else if (data1 == 0xFA){
+				World_Init();
+			}
+			else if (data1 == 0xFF){
+				count = 0;
+			}
+			else if (data1 == 0xF0) { // pause
+				cond = 0;
+			}
+			else if (data1 == 0xF1) { // pause
+				cond = 1;
+			}
+			else if (data1 == 0xFB) { // master win (LOSS)
+				cond = 12;
+			}
+			else if (data1 == 0xFC) { // slave win (WIN)
+				cond = 13;
+			}
+			else if (count == 0) {
+				data.x = data1;
+				count++;
+			}
+			else if (count == 1) {
+				ball_x = data1;
+				count++;
+			}
+			else if (count == 2) {
+				ball_y = data1;
+				count++;
+			}
 		}
-		else if (data1 == 0xFA){
-			World_Init();
+		if (cond == 0){
+			BSP_Joystick_Input(&rawX,&rawY,&select);
+			UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work 
+			UART_Send(data.y); // Send To master
 		}
-		else if (data1 == 0xFF){
-			count = 0;
-		}
-		else if (count == 0) {
-			data.x = data1;
-			count++;
-		}
-		else if (count == 1) {
-			ball_x = data1;
-			count++;
-		}
-		else if (count == 2) {
-			ball_y = data1;
-			count++;
-		}
-	}
-	JsFifo_Put(data); // send to consumer 
-	UART_Send(data.y); // Send To master
-	
-}
-
-
-// ***********ButtonWork*************
-void ButtonWork(void){
-	uint32_t StartTime,CurrentTime,ElapsedTime, ButtonStartTime;
-	StartTime = OS_MsTime();
-	ButtonStartTime = OS_Time();
-	ElapsedTime = 0;
-	OS_bWait(&LCDFree);
-	BSP_LCD_FillScreen(BGCOLOR);
-	Button1RespTime = (Button1RespTime + (OS_Time() - ButtonStartTime)) >> 1;
-	while (ElapsedTime < LIFETIME){
-		CurrentTime = OS_MsTime();
-		ElapsedTime = CurrentTime - StartTime;
-		BSP_LCD_Message(0,5,0,"Life Time:",LIFETIME);
-		BSP_LCD_Message(1,0,0,"Horizontal Area:",area[0]);
-		BSP_LCD_Message(1,1,0,"Vertical Area:",area[1]);
-		BSP_LCD_Message(1,2,0,"Elapsed Time:",ElapsedTime);
-		OS_Sleep(50);
-		
-	}
-	BSP_LCD_FillScreen(BGCOLOR);
-	OS_bSignal(&LCDFree);
-  OS_Kill();  // done, OS does not return from a Kill
-} 
-
-//************SW1Push*************
-void SW1Push(void){
-  if(OS_MsTime() > 20 ){ // debounce
-    if(OS_AddThread(&ButtonWork,128,4)){
-			OS_ClearMsTime();
-      NumCreated++; 
-    }
-    OS_ClearMsTime();  // at least 20ms between touches
-  }
-	
+		JsFifo_Put(data); // send to consumer
 }
 
 
 //******** Consumer *************** 
 void Consumer(void){
 	while(1){
-		jsDataType data;
-		JsFifo_Get(&data);
-		OS_bWait(&LCDFree);
-		
-		BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
-		BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
-		
-		l_paddle_y = data.x;
-		BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
-		BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
-		
-		r_paddle_y = data.y;
-		BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
-		BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw paddle
-		
-
-		
-		OS_bSignal(&LCDFree);
-		prevx = l_paddle_y; 
-		prevy = r_paddle_y;
-		ball_xold = ball_x;
-		ball_yold = ball_y;
+		if (cond == 12) { //LOSS
+				BSP_LCD_FillScreen(LCD_BLACK);
+				BSP_LCD_DrawString(8, 5, sl, LCD_RED);
+				BSP_LCD_DrawString(1, 6, s4, LCD_WHITE);
+				cond = 2;
+		}
+		else if (cond == 13) { // WIN
+				BSP_LCD_FillScreen(LCD_BLACK);
+				BSP_LCD_DrawString(8, 5, sw, LCD_GREEN);
+				BSP_LCD_DrawString(1, 6, s4, LCD_WHITE);
+				cond = 3;
+		}
+		else if (cond == 1) {
+			BSP_LCD_DrawString(0, 0, s1, LCD_WHITE);
+		}
+		else if (cond == 0) {
+			jsDataType data;
+			JsFifo_Get(&data);
+			OS_bWait(&LCDFree);
+			BSP_LCD_DrawBall(ball_xold, ball_yold, LCD_BLACK);
+			BSP_LCD_DrawBall(ball_x, ball_y, LCD_WHITE);
+			
+						BSP_LCD_DrawString(0, 0, s1, LCD_BLACK);
+			
+			l_paddle_y = data.x;
+			BSP_LCD_DrawFastVLine(PADDLEX, prevx - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+			BSP_LCD_DrawFastVLine(PADDLEX, l_paddle_y - 12, PADDLEHEIGHT, LCD_RED); //draw paddle
+			
+			r_paddle_y = data.y;
+			BSP_LCD_DrawFastVLine(PADDLEY, prevy - 12, PADDLEHEIGHT, LCD_BLACK); //erase paddle
+			BSP_LCD_DrawFastVLine(PADDLEY, r_paddle_y - 12, PADDLEHEIGHT, LCD_GREEN); //draw paddle
+			OS_bSignal(&LCDFree);
+			prevx = l_paddle_y; 
+			prevy = r_paddle_y;
+			ball_xold = ball_x;
+			ball_yold = ball_y;
+		}
 	}
 }
 
-
+//************SW1Push*************
+void SW1Push(void){
+  if(OS_MsTime() > 20 ){ // debounce
+    if (cond == 0) {
+			UART_Send(0xF1);
+			cond = 1;
+		}
+		else if (cond == 1) {
+			UART_Send(0xF0);
+			cond = 0;
+		}
+    OS_ClearMsTime();  // at least 20ms between touches
+  }
+	
+}
 
 //************SW2Push*************
 void SW2Push(void){
@@ -208,13 +221,15 @@ void SW2Push(void){
 }
 
 void World_Init(void){
+	cond = 0;
+	
 	x = 63;
 	y = 63;
 	ball_x = 63;
   ball_y = 63;
 	l_paddle_y = 63;
   r_paddle_y = 63;
-	BSP_LCD_FillScreen(BGCOLOR);
+	BSP_LCD_FillScreen(LCD_BLACK);
 	origin[0] = 0x7FF;
 	origin[1] = 0x7FF;
 	
@@ -244,9 +259,9 @@ int main(void){
   JsFifo_Init();
 
 //*******attach background tasks***********
-  //OS_AddSW1Task(&SW1Push, 4);
-	OS_AddSW2Task(&SW2Push, 4);
-  OS_AddPeriodicThread(&Producer, PERIOD, 3);
+  OS_AddSW1Task(&SW1Push, 1);
+	OS_AddSW2Task(&SW2Push, 1);
+  OS_AddPeriodicThread(&Producer, PERIOD, 2);
 	
  
   OS_AddThread(&Consumer, 128, 1); 
